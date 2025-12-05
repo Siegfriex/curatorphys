@@ -1,0 +1,7 @@
+{
+  "description": "A retro-futuristic 3D arcade game where players navigate space and battle enemies.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "name": "Copy of Synthwave Space"
+}

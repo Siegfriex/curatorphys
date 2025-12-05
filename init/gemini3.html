@@ -1,0 +1,777 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Curator's Odysseia v4.0 (The Architect)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; background-color: #020409; overflow: hidden; font-family: 'Inter', sans-serif; color: #fff; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* UI Layer */
+        #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        
+        .hud-panel { position: absolute; color: white; }
+        .hud-tl { top: 30px; left: 30px; }
+        .hud-tr { top: 30px; right: 30px; text-align: right; }
+        
+        .label { font-size: 9px; font-weight: 700; color: #3B82F6; letter-spacing: 0.25em; text-transform: uppercase; margin-bottom: 6px; }
+        .value { font-family: 'Playfair Display', serif; font-size: 32px; font-style: italic; line-height: 1; text-shadow: 0 0 20px rgba(59,130,246,0.3); }
+        .sub-value { font-size: 11px; color: #888; margin-top: 4px; letter-spacing: 0.1em; }
+        
+        /* Gate Modal */
+        #gate-modal {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: transparent; z-index: 50;
+            flex-direction: column; justify-content: center; align-items: center;
+            backdrop-filter: blur(0px); pointer-events: none;
+            transition: opacity 0.5s;
+        }
+        #gate-modal p.gate-context {
+            font-family: 'Inter', sans-serif; font-size: 11px; color: #3B82F6; letter-spacing: 0.3em; text-transform: uppercase;
+            border-top: 1px solid rgba(59, 130, 246, 0.3); padding-top: 24px; margin-bottom: 24px;
+            opacity: 0; animation: fadeIn 1s forwards 0.5s;
+        }
+        #gate-modal h1 {
+            font-family: 'Playfair Display', serif; font-size: 80px; font-weight: 400; font-style: italic; color: #fff; margin: 0 0 32px 0;
+            text-shadow: 0 0 40px rgba(59, 130, 246, 0.4); letter-spacing: -0.02em;
+            transform: scale(0.9); animation: scaleUp 3s forwards ease-out;
+        }
+        #gate-modal p.quote {
+            font-family: 'Playfair Display', serif; font-size: 20px; color: #eee; font-style: italic; max-width: 600px; text-align: center; line-height: 1.6;
+            opacity: 0; animation: fadeIn 1s forwards 1s; text-shadow: 0 0 10px rgba(0,0,0,0.8);
+        }
+
+        @keyframes fadeIn { to { opacity: 1; } }
+        @keyframes scaleUp { to { transform: scale(1.0); } }
+
+        /* Curator Report (Game Over) */
+        #report-screen {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #0a0a0f; z-index: 60; pointer-events: auto;
+            overflow-y: auto;
+            padding: 60px; box-sizing: border-box;
+        }
+        .report-container {
+            max-width: 800px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.1); padding: 60px;
+            background: rgba(255,255,255,0.02);
+            box-shadow: 0 0 100px rgba(0,0,0,0.5);
+        }
+        .report-header { border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 30px; margin-bottom: 40px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .report-title { font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: #3B82F6; }
+        .artist-id { font-family: 'Playfair Display', serif; font-size: 36px; font-style: italic; margin-top: 10px; }
+        .archetype-badge { background: #28317C; color: #fff; padding: 8px 16px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 700; }
+        
+        .matrix-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 50px; }
+        .matrix-item { border-left: 1px solid rgba(255,255,255,0.1); padding-left: 20px; }
+        .matrix-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 8px; }
+        .matrix-val { font-family: 'Playfair Display', serif; font-size: 24px; }
+        
+        .narrative-box { background: rgba(5,5,16,0.5); border: 1px solid rgba(255,255,255,0.05); padding: 30px; margin-bottom: 40px; }
+        .narrative-text { font-family: 'Playfair Display', serif; font-size: 16px; line-height: 1.8; color: #ddd; }
+        
+        .timeline-log { font-size: 12px; color: #666; font-family: 'Inter', sans-serif; line-height: 2; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 20px; }
+        .log-entry strong { color: #3B82F6; margin-right: 10px; }
+
+        .btn { 
+            background: #fff; color: #000; border: none; padding: 16px 32px; width: 100%;
+            font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em; cursor: pointer; margin-top: 20px;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #ccc; }
+
+        #touch-controls { display: none; position: absolute; bottom: 0; left: 0; width: 100%; height: 40%; pointer-events: auto; }
+    </style>
+    <script type="importmap">
+        { "imports": { 
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js", 
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" 
+        } }
+    </script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div id="ui">
+        <div class="hud-panel hud-tl">
+            <div class="label">Era Cycle</div>
+            <div class="value" id="era-val">20s</div>
+            <div class="sub-value" id="sub-era">The Order</div>
+        </div>
+        <div class="hud-panel hud-tr">
+            <div class="label">Curator Data</div>
+            <div class="value" id="score-val">0</div>
+            <div class="sub-value">ARTIFACTS ARCHIVED</div>
+        </div>
+        
+        <!-- Gate Modal -->
+        <div id="gate-modal">
+            <p class="gate-context" id="gate-context">Chronos Gate Triggered</p>
+            <h1 id="gate-name">SCANDAL</h1>
+            <p class="quote" id="gate-quote">"Rumors spread faster than truth."</p>
+        </div>
+
+        <!-- Curator Report -->
+        <div id="report-screen">
+            <div class="report-container">
+                <div class="report-header">
+                    <div>
+                        <div class="report-title">Curatorial Report vFinal</div>
+                        <div class="artist-id" id="rep-artist">Artist #UNKNOWN</div>
+                    </div>
+                    <div class="archetype-badge" id="rep-arch">UNDEFINED</div>
+                </div>
+                
+                <div class="matrix-grid">
+                    <div class="matrix-item">
+                        <span class="matrix-label">Institutional (Authority)</span>
+                        <div class="matrix-val" id="val-inst">0</div>
+                    </div>
+                    <div class="matrix-item">
+                        <span class="matrix-label">Network (Market)</span>
+                        <div class="matrix-val" id="val-net">0</div>
+                    </div>
+                    <div class="matrix-item">
+                        <span class="matrix-label">Academic (Depth)</span>
+                        <div class="matrix-val" id="val-acad">0</div>
+                    </div>
+                    <div class="matrix-item">
+                        <span class="matrix-label">Historical (Legacy)</span>
+                        <div class="matrix-val" id="val-hist">0</div>
+                    </div>
+                </div>
+
+                <div class="narrative-box">
+                    <span class="label">Trajectory Narrative</span>
+                    <p class="narrative-text" id="rep-narrative">Calculating...</p>
+                </div>
+
+                <div class="timeline-log" id="rep-log"></div>
+
+                <button class="btn" onclick="location.reload()">Initialize New Voyage</button>
+            </div>
+        </div>
+    </div>
+    <div id="touch-controls"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+        // --- 0. CONSTANTS & DB (Curator's Odysseia) ---
+        const COLORS = {
+            inst: 0x28317C, net: 0x3B82F6, acad: 0xF5F5F5, void: 0x020409, gold: 0xFFD700
+        };
+
+        const GATE_CONFIG = {
+            Pos: { color: 0xFFD700 }, // Gold
+            Neg: { color: 0xFF003C }, // Glitch Red
+            Neu: { color: 0x8888AA }  // Mystic Fog
+        };
+
+        const GATE_DB = {
+            '20s': [
+                { id: 'ELITE', label: 'THE ELITE', type: 'Pos', quote: '"Every child is an artist. The problem is how to remain an artist once we grow up." - Picasso', w: {inst: 20} },
+                { id: 'EXPELLED', label: 'EXPULSION', type: 'Neg', quote: '"I am the master of my fate, I am the captain of my soul." - Henley', w: {inst: -20, disc: 20} },
+                { id: 'HIATUS', label: 'HIATUS', type: 'Neu', quote: '"Life can only be understood backwards; but it must be lived forwards." - Kierkegaard', w: {hist: 10} }
+            ],
+            '40s': [
+                { id: 'THEORY', label: 'THEORY', type: 'Pos', quote: '"I do not seek. I find." - Picasso', w: {acad: 25} },
+                { id: 'BETRAYAL', label: 'BETRAYAL', type: 'Neg', quote: '"There is no greater sorrow than to recall happiness in times of misery." - Dante', w: {acad: -10, disc: 15} },
+                { id: 'WANDER', label: 'WANDERLUST', type: 'Neu', quote: '"Trees are sanctuaries. Whoever knows how to listen to them learns the truth." - Hesse', w: {hist: 20} }
+            ],
+            '60s': [
+                { id: 'RETRO', label: 'RETROSPECTIVE', type: 'Pos', quote: '"Art does not reproduce the visible; rather, it makes visible." - Paul Klee', w: {inst: 30, disc: 20} },
+                { id: 'SCANDAL', label: 'SCANDAL', type: 'Neg', quote: '"Criticism is to the artist what the sun is to the plant." - Oscar Wilde', w: {disc: 40, net: -20} },
+                { id: 'HERMIT', label: 'THE HERMIT', type: 'Neu', quote: '"I fear fame. It is like taking off one\'s clothes." - Cezanne', w: {hist: 40, net: -10} }
+            ]
+        };
+
+        // --- 1. SHADERS (VISUAL RITUAL) ---
+        
+        // Cinematic Post-Process
+        const CinematicShader = {
+            uniforms: {
+                "tDiffuse": { value: null },
+                "uTime": { value: 0 },
+                "uAberration": { value: 0 },
+                "uGrain": { value: 0.15 }
+            },
+            vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+            fragmentShader: `
+                uniform sampler2D tDiffuse; uniform float uAberration; uniform float uGrain; uniform float uTime; varying vec2 vUv;
+                float random(vec2 p) { vec2 k1 = vec2(23.14069263277926, 2.665144142690225); return fract(cos(dot(p, k1)) * 12345.6789); }
+                void main() {
+                    vec2 uv = vUv;
+                    vec2 dist = uv - 0.5; vec2 offset = dist * uAberration;
+                    float r = texture2D(tDiffuse, uv + offset).r;
+                    float g = texture2D(tDiffuse, uv).g;
+                    float b = texture2D(tDiffuse, uv - offset).b;
+                    vec3 color = vec3(r, g, b);
+                    color += (random(uv + uTime) - 0.5) * uGrain;
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        };
+
+        // Volumetric Beam Shader (Soft Lighthouse Effect)
+        const BeamShader = {
+            uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0xFFD700) } },
+            vertexShader: `
+                varying vec2 vUv; varying vec3 vViewPosition; varying vec3 vNormal;
+                void main() { 
+                    vUv = uv; vNormal = normalize(normalMatrix * normal);
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vViewPosition = -mvPosition.xyz;
+                    gl_Position = projectionMatrix * mvPosition; 
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime; uniform vec3 uColor;
+                varying vec2 vUv; varying vec3 vViewPosition; varying vec3 vNormal;
+                
+                // Simplex Noise Approximation
+                vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+                float snoise(vec2 v){
+                    const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+                    vec2 i  = floor(v + dot(v, C.yy) );
+                    vec2 x0 = v -   i + dot(i, C.xx);
+                    vec2 i1; i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                    vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1;
+                    i = mod(i, 289.0);
+                    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+                    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                    m = m*m ; m = m*m ;
+                    vec3 x = 2.0 * fract(p * C.www) - 1.0; vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5);
+                    vec3 a0 = x - ox;
+                    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+                    vec3 g; g.x  = a0.x  * x0.x  + h.x  * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                    return 130.0 * dot(m, g);
+                }
+
+                void main() {
+                    // Soft vertical gradient (Bottom to Top)
+                    float verticalFade = smoothstep(0.0, 0.2, vUv.y) * pow(1.0 - vUv.y, 2.0);
+
+                    // Smoky Noise - Slow, vertical drift
+                    float smoke1 = snoise(vec2(vUv.x * 4.0, vUv.y * 1.5 - uTime * 0.15));
+                    float smoke2 = snoise(vec2(vUv.x * 2.0, vUv.y * 0.5 - uTime * 0.1));
+                    float smoke = (smoke1 + smoke2) * 0.5;
+
+                    // Volumetric feel
+                    vec3 viewDir = normalize(vViewPosition);
+                    // Edge glow (Fresnel)
+                    float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), 2.5);
+                    // Core density
+                    float core = max(0.0, dot(viewDir, -vNormal)) * 0.2;
+
+                    // Compose Alpha
+                    float alpha = verticalFade * (0.1 + fresnel * 0.5 + core + smoke * 0.05);
+
+                    // Color boost at edges
+                    vec3 finalColor = uColor * (1.0 + fresnel * 0.8);
+
+                    gl_FragColor = vec4(finalColor, alpha);
+                }
+            `
+        };
+
+        // Gate Frame Shader (Pulsing Rim)
+        const GateFrameShader = {
+            uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0xFFD700) }, uPulse: { value: 0 } },
+            vertexShader: `
+                varying vec2 vUv; varying vec3 vNormal; varying vec3 vViewPosition;
+                void main() { vUv=uv; vNormal=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.0); vViewPosition=-mv.xyz; gl_Position=projectionMatrix*mv; }
+            `,
+            fragmentShader: `
+                uniform float uTime; uniform vec3 uColor; uniform float uPulse;
+                varying vec2 vUv; varying vec3 vNormal; varying vec3 vViewPosition;
+                void main() {
+                    vec3 viewDir = normalize(vViewPosition);
+                    float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), 3.0);
+                    vec3 base = vec3(0.05, 0.05, 0.08); // Dark metal
+                    float pulse = 0.5 + 0.5 * sin(uTime * 3.0);
+                    vec3 rim = uColor * fresnel * (1.5 + uPulse * 2.0) * pulse;
+                    gl_FragColor = vec4(base + rim, 1.0);
+                }
+            `
+        };
+
+        // Portal "Event Horizon" Shader
+        const PortalShader = {
+            uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(COLORS.gold) }, uDistort: { value: 0.5 } },
+            vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+            fragmentShader: `
+                uniform float uTime; uniform vec3 uColor; uniform float uDistort; varying vec2 vUv;
+                float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
+                void main() {
+                    vec2 p = vUv * 2.0 - 1.0; float r = length(p); float a = atan(p.y, p.x);
+                    float suction = uTime * 2.0; float swirl = r - suction;
+                    vec2 uvDis = vec2(cos(a + swirl), sin(a + swirl)) * r;
+                    float noise = rand(uvDis * 10.0 + uTime * 0.5);
+                    float ring = smoothstep(0.6, 0.45, r) - smoothstep(0.4, 0.0, r);
+                    float core = 1.0 - smoothstep(0.0, 0.8, r);
+                    vec3 col = uColor * (ring * 2.0 + core + noise * 0.5);
+                    gl_FragColor = vec4(col, ring + core + noise * 0.2);
+                }
+            `
+        };
+
+        // Glitch & Wake Shaders
+        const GlitchShader = {
+            uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(COLORS.net) } },
+            vertexShader: `varying vec2 vUv; varying vec3 vNormal; varying vec3 vViewPosition; void main() { vUv=uv; vNormal=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.0); vViewPosition=-mv.xyz; gl_Position=projectionMatrix*mv; }`,
+            fragmentShader: `
+                uniform float uTime; uniform vec3 uColor; varying vec2 vUv; varying vec3 vNormal; varying vec3 vViewPosition;
+                float random(vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
+                void main() {
+                    vec3 viewDir = normalize(vViewPosition); float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), 2.0);
+                    float scanline = sin(vUv.y * 120.0 - uTime * 8.0) * 0.5 + 0.5;
+                    gl_FragColor = vec4(uColor * (scanline * 0.4 + 0.6) + vec3(0.8) * fresnel, 0.5 + fresnel * 0.5);
+                }
+            `
+        };
+
+        const WakeShader = {
+            uniforms: { uTime: { value: 0 } },
+            vertexShader: `
+                attribute float aAlpha; 
+                attribute float aEra; 
+                varying vec2 vUv; 
+                varying float vAlpha; 
+                varying float vEra; 
+                void main() { 
+                    vUv = uv; 
+                    vAlpha = aAlpha; 
+                    vEra = aEra; 
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); 
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime; 
+                varying vec2 vUv; 
+                varying float vAlpha; 
+                varying float vEra;
+                
+                float hash(vec2 p) {
+                    p = fract(p * vec2(123.34, 456.21));
+                    p += dot(p, p + 45.32);
+                    return fract(p.x * p.y);
+                }
+
+                void main() {
+                    float noise = hash(vUv * 20.0 + floor(uTime * 10.0)); 
+                    float edgeNoise = (noise - 0.5) * 0.2;
+                    float distFromCenter = abs(vUv.y - 0.5) * 2.0 + edgeNoise;
+                    
+                    vec3 col0 = vec3(0.6, 0.7, 0.8);
+                    float alpha0 = smoothstep(0.6, 0.4, distFromCenter) * step(0.5, sin(vUv.x * 100.0 + noise * 10.0)) * 0.4;
+                    vec3 col1 = vec3(0.2, 0.4, 0.9);
+                    float alpha1 = smoothstep(0.7, 0.5, distFromCenter) * 0.8;
+                    vec3 col2 = vec3(0.05, 0.05, 0.1);
+                    float alpha2 = smoothstep(0.8, 0.6, distFromCenter);
+
+                    vec3 finalCol = mix(col0, col1, smoothstep(0.0, 1.0, vEra));
+                    finalCol = mix(finalCol, col2, smoothstep(1.0, 2.0, vEra));
+                    float finalAlpha = mix(alpha0, alpha1, smoothstep(0.0, 1.0, vEra));
+                    finalAlpha = mix(finalAlpha, alpha2, smoothstep(1.0, 2.0, vEra));
+                    finalAlpha *= vAlpha;
+
+                    if (finalAlpha < 0.01) discard;
+                    gl_FragColor = vec4(finalCol, finalAlpha);
+                }
+            `
+        };
+
+        const LightShaftShader = {
+            uniforms: { uTime: {value:0}, uColor: {value: new THREE.Color(0x88ccff)} },
+            vertexShader: `varying vec2 vUv; varying vec3 vPos; void main() { vUv=uv; vPos=position; gl_Position=projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+            fragmentShader: `
+                uniform float uTime; uniform vec3 uColor; varying vec2 vUv; varying vec3 vPos;
+                float noise(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+                void main() {
+                    float beam = smoothstep(0.4, 0.6, noise(vec2(vPos.x * 0.1 + uTime*0.05, vPos.z * 0.1)));
+                    gl_FragColor = vec4(uColor, smoothstep(0.0, 1.0, 1.0 - vUv.y) * beam * 0.08);
+                }
+            `
+        }
+
+        // --- 2. ASSETS ---
+        function createConcreteTexture() {
+            const c=document.createElement('canvas'); c.width=512; c.height=512; const ctx=c.getContext('2d');
+            ctx.fillStyle='#444'; ctx.fillRect(0,0,512,512);
+            for(let i=0;i<50000;i++){ ctx.fillStyle=Math.random()>0.5?'rgba(0,0,0,0.1)':'rgba(255,255,255,0.05)'; ctx.fillRect(Math.random()*512,Math.random()*512,2,2); }
+            return new THREE.CanvasTexture(c);
+        }
+        function createPaperTexture() {
+            const c=document.createElement('canvas'); c.width=256; c.height=256; const ctx=c.getContext('2d');
+            ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,256,256); for(let i=0;i<1000;i++){ ctx.fillStyle='rgba(0,0,0,0.05)'; ctx.fillRect(Math.random()*256,Math.random()*256,1,1); }
+            return new THREE.CanvasTexture(c);
+        }
+        function createLabelTexture(text, color) {
+            const c=document.createElement('canvas'); c.width=512; c.height=128; const ctx=c.getContext('2d');
+            ctx.fillStyle=color||'#fff'; ctx.font='bold 52px "Playfair Display"'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.shadowColor='rgba(255,255,255,0.8)'; ctx.shadowBlur=10; ctx.fillText(text,256,64);
+            return new THREE.CanvasTexture(c);
+        }
+        
+        // --- 2.1 Void Rain Starfield ---
+        function createStarField() {
+            const count = 3000;
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            const colors = new Float32Array(count * 3);
+            const sizes = new Float32Array(count);
+            const speeds = new Float32Array(count);
+            const phases = new Float32Array(count);
+
+            const palette = [new THREE.Color(0xffffff), new THREE.Color(0x3B82F6), new THREE.Color(0x88ccff), new THREE.Color(0xaaccff)];
+
+            for(let i=0; i<count; i++){
+                pos[i*3] = (Math.random()-0.5) * 300; 
+                pos[i*3+1] = Math.random() * 100;
+                pos[i*3+2] = (Math.random()-0.5) * 200 - 50;
+
+                const c = palette[Math.floor(Math.random()*palette.length)];
+                colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
+
+                sizes[i] = Math.random() * 2.5 + 0.5;
+                speeds[i] = Math.random() * 2.0 + 1.0; 
+                phases[i] = Math.random() * Math.PI * 2;
+            }
+
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+            geo.setAttribute('speed', new THREE.BufferAttribute(speeds, 1));
+            geo.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+
+            const mat = new THREE.ShaderMaterial({
+                uniforms: { uTime: { value: 0 }, uHeight: { value: 100.0 } },
+                vertexShader: `
+                    uniform float uTime; uniform float uHeight;
+                    attribute float size; attribute float speed; attribute float phase; attribute vec3 color;
+                    varying vec3 vColor; varying float vAlpha;
+                    void main() {
+                        vColor = color;
+                        vec3 p = position;
+                        p.y = mod(p.y - uTime * speed, uHeight);
+                        p.y -= 20.0;
+                        vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+                        gl_PointSize = size * (30.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                        vAlpha = 0.5 + 0.5 * sin(uTime * 2.0 + phase);
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor; varying float vAlpha;
+                    void main() {
+                        vec2 coord = gl_PointCoord - 0.5;
+                        float dist = length(coord);
+                        if(dist > 0.5) discard;
+                        float glow = 1.0 - (dist * 2.0);
+                        glow = pow(glow, 1.5);
+                        gl_FragColor = vec4(vColor, vAlpha * glow);
+                    }
+                `,
+                transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            });
+
+            return new THREE.Points(geo, mat);
+        }
+
+        // --- 3. SCENE ---
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(COLORS.void); scene.fog = new THREE.FogExp2(COLORS.void, 0.01);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 500); camera.position.set(0, 8, 18);
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' }); 
+        renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const ambient = new THREE.AmbientLight(0x404040, 1.0); scene.add(ambient);
+        const dirLight = new THREE.DirectionalLight(0xaaddff, 2.0); dirLight.position.set(10, 30, 10); dirLight.castShadow = true; 
+        dirLight.shadow.mapSize.set(4096, 4096); 
+        dirLight.shadow.camera.left = -150; dirLight.shadow.camera.right = 150; dirLight.shadow.camera.top = 150; dirLight.shadow.camera.bottom = -150;
+        dirLight.shadow.camera.near = 0.5; dirLight.shadow.camera.far = 500;
+        dirLight.shadow.bias = -0.0001; // Fix square artifact / shadow acne
+        scene.add(dirLight); scene.add(dirLight.target);
+        
+        // Define StarField BEFORE usage
+        const starField = createStarField();
+        scene.add(starField);
+
+        const water = new THREE.Mesh(new THREE.PlaneGeometry(500,500,128,128), new THREE.MeshPhysicalMaterial({color:0x020409, transmission:0.9, opacity:1.0, metalness:0.8, roughness:0.1, thickness:5.0, attenuationColor:new THREE.Color(0x050a1a), attenuationDistance:5.0, transparent:true}));
+        water.rotation.x=-Math.PI/2; water.position.y=-1.5; water.receiveShadow=true; scene.add(water);
+
+        const mapTex = new THREE.CanvasTexture((function(){const c=document.createElement('canvas');c.width=1024;c.height=1024;const cx=c.getContext('2d');cx.fillStyle='#000';cx.fillRect(0,0,1024,1024);cx.strokeStyle='rgba(59,130,246,0.3)';cx.lineWidth=2;for(let i=0;i<1024;i+=64){cx.moveTo(i,0);cx.lineTo(i,1024);cx.stroke();cx.moveTo(0,i);cx.lineTo(1024,i);cx.stroke();}return c;})());
+        mapTex.wrapS=mapTex.wrapT=THREE.RepeatWrapping;
+        const mapPlane = new THREE.Mesh(new THREE.PlaneGeometry(600,600), new THREE.MeshBasicMaterial({map:mapTex, transparent:true, opacity:0.3}));
+        mapPlane.rotation.x=-Math.PI/2; mapPlane.position.y=-10; scene.add(mapPlane);
+
+        const godRays = new THREE.Group();
+        const rayGeo = new THREE.ConeGeometry(8, 80, 8, 1, true);
+        const rayMat = new THREE.ShaderMaterial({ ...LightShaftShader, transparent:true, side:THREE.DoubleSide, depthWrite:false, blending:THREE.AdditiveBlending });
+        for(let i=0;i<6;i++){ const r=new THREE.Mesh(rayGeo, rayMat); r.position.set((Math.random()-0.5)*150,30,(Math.random()-0.5)*100); r.rotation.x=Math.PI/1.1; godRays.add(r); }
+        scene.add(godRays);
+
+        const player = new THREE.Group();
+        const matConcrete = new THREE.MeshStandardMaterial({ map: createConcreteTexture(), roughness: 0.9, metalness: 0.1, color: 0x888888 });
+        const matWire = new THREE.MeshBasicMaterial({color: 0x3B82F6, wireframe: true, transparent: true, opacity: 0.4});
+        const hull = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 4.5), matConcrete); hull.position.y=0.6; hull.castShadow=true;
+        const hullWire = new THREE.Mesh(new THREE.BoxGeometry(1.62, 1.22, 4.52), matWire); hullWire.position.y=0.6;
+        const mast = new THREE.Mesh(new THREE.BoxGeometry(0.3, 4.5, 0.3), matConcrete); mast.position.set(0, 2.5, 0.5); mast.castShadow=true;
+        const sail = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 3.0), new THREE.MeshBasicMaterial({color: 0x3B82F6, side: THREE.DoubleSide, transparent:true, opacity: 0.7})); sail.position.set(0, 3.8, 0.7);
+        player.add(hull, hullWire, mast, sail); scene.add(player);
+
+        const WAKE_SEGMENTS=300; const wakeGeo = new THREE.PlaneGeometry(1,1,WAKE_SEGMENTS-1,1);
+        const alphas=new Float32Array(WAKE_SEGMENTS*2); const eras=new Float32Array(WAKE_SEGMENTS*2);
+        wakeGeo.setAttribute('aAlpha', new THREE.BufferAttribute(alphas,1)); wakeGeo.setAttribute('aEra', new THREE.BufferAttribute(eras,1));
+        const wakeMesh = new THREE.Mesh(wakeGeo, new THREE.ShaderMaterial({ ...WakeShader, transparent:true, side:THREE.DoubleSide }));
+        wakeMesh.frustumCulled = false; scene.add(wakeMesh);
+        const wakeNodes = [];
+
+        // --- 4. LOGIC ---
+        // STATE.paused DEFAULT TRUE to wait for React signal
+        const STATE = { running: true, paused: true, score: 0, era: 0, speed: 30, dist: 0, vel: new THREE.Vector2(0,0), input: 0, metrics: {inst:0, net:0, acad:0, disc:0, hist:0}, timeline: [], shake: 0, flash: 0, aberration: 0, timeScale: 1.0, shipVibration: 0, dragFactor: 0, handActive: false };
+        const ERAS = ['20s', '40s', '60s']; const SUB_ERAS = ['The Order', 'The Inquiry', 'The Ripple'];
+
+        const MAT_T1_CORE = new THREE.MeshPhysicalMaterial({color: 0x000000, metalness: 0.2, roughness: 0.05, transmission: 0.95, thickness: 3.0, emissive: 0x28317C, emissiveIntensity: 0.8});
+        const MAT_T1_WIRE = new THREE.MeshStandardMaterial({color: COLORS.gold, metalness: 1.0, roughness: 0.1, wireframe: true});
+        const MAT_T2_HOLO = new THREE.ShaderMaterial({ ...GlitchShader, transparent: true, side: THREE.DoubleSide });
+        const MAT_T2_WIRE = new THREE.MeshBasicMaterial({color: COLORS.net, wireframe: true, transparent: true, opacity: 0.3});
+        const MAT_T3_PAPER = new THREE.MeshStandardMaterial({map: createPaperTexture(), roughness: 1.0, metalness: 0.0, color: 0xffffff});
+        
+        const objects = []; const particles = [];
+        
+        function spawnParticles(pos, type) {
+            const count = type==='wake' ? 1 : (type==='t1'?50:(type==='t2'?20:8));
+            const color = type==='wake' ? 0x00ffff : (type==='t1'?COLORS.gold:(type==='t2'?COLORS.net:0xffffff));
+            const geo = new THREE.BoxGeometry(type==='wake'?0.3:0.1, type==='wake'?0.3:0.1);
+            for(let i=0; i<count; i++) {
+                const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: color, transparent:true, opacity: type==='wake'?0.4:1.0}));
+                mesh.position.copy(pos);
+                if(type === 'wake') { mesh.position.y = 0.1; mesh.userData = { vel: new THREE.Vector3(0,0,0), life: 1.5, decay: 0.02 }; }
+                else { mesh.userData = { vel: new THREE.Vector3((Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5), life: 1.0, decay: 0.03 }; }
+                scene.add(mesh); particles.push(mesh);
+            }
+        }
+
+        function spawnObject(type, zPos) {
+            if(type === 'gate') {
+                const eraKey = ERAS[STATE.era]; const choices = GATE_DB[eraKey];
+                [-12, 0, 12].forEach((x, i) => {
+                    if(!choices[i]) return;
+                    const data = choices[i]; const config = GATE_CONFIG[data.type]; const color = new THREE.Color(config.color);
+                    const group = new THREE.Group();
+                    
+                    const frameMat = new THREE.ShaderMaterial({ ...GateFrameShader });
+                    frameMat.uniforms.uColor.value = color;
+                    
+                    const frameL = new THREE.Mesh(new THREE.BoxGeometry(1, 12, 1), frameMat); frameL.position.set(-3, 6, 0);
+                    const frameR = new THREE.Mesh(new THREE.BoxGeometry(1, 12, 1), frameMat); frameR.position.set(3, 6, 0);
+                    const frameT = new THREE.Mesh(new THREE.BoxGeometry(7, 1, 1), frameMat); frameT.position.set(0, 12, 0);
+                    
+                    const beamGeo = new THREE.CylinderGeometry(2.5, 1.5, 100, 32, 1, true);
+                    const beamMat = new THREE.ShaderMaterial({ ...BeamShader, transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+                    const beamMatL = beamMat.clone(); beamMatL.uniforms.uColor.value = color;
+                    const beamMatR = beamMat.clone(); beamMatR.uniforms.uColor.value = color;
+                    frameL.add(new THREE.Mesh(beamGeo, beamMatL).translateX(0).translateY(50));
+                    frameR.add(new THREE.Mesh(beamGeo, beamMatR).translateX(0).translateY(50));
+                    
+                    const portalMat = new THREE.ShaderMaterial({ ...PortalShader, transparent: true, side: THREE.DoubleSide });
+                    portalMat.uniforms.uColor.value = color;
+                    const portal = new THREE.Mesh(new THREE.PlaneGeometry(5, 11), portalMat); portal.position.set(0, 6, 0);
+                    
+                    const labelColorStr = data.type === 'Neg' ? '#FF003C' : (data.type === 'Pos' ? '#FFD700' : '#AAA');
+                    const label = new THREE.Mesh(new THREE.PlaneGeometry(5,1.5), new THREE.MeshBasicMaterial({map:createLabelTexture(data.label, labelColorStr), transparent:true, side: THREE.DoubleSide}));
+                    label.position.set(0, 13.5, 0);
+                    
+                    group.add(frameL, frameR, frameT, portal, label); group.position.set(x, 0, zPos); group.userData = { type: 'gate', data: data };
+                    scene.add(group); objects.push(group);
+                });
+            } else {
+                const rnd = Math.random(); let mesh, val, axis, tier;
+                if(rnd < 0.05) { 
+                    const group = new THREE.Group(); group.add(new THREE.Mesh(new THREE.DodecahedronGeometry(1.5), MAT_T1_CORE.clone()), new THREE.Mesh(new THREE.DodecahedronGeometry(1.5), MAT_T1_WIRE));
+                    mesh=group; val=10; axis='inst'; tier='t1';
+                } else if(rnd < 0.3) {
+                    const group = new THREE.Group(); group.add(new THREE.Mesh(new THREE.BoxGeometry(1,1,1), MAT_T2_HOLO.clone()), new THREE.Mesh(new THREE.BoxGeometry(1,1,1), MAT_T2_WIRE));
+                    mesh=group; val=5; axis='net'; tier='t2';
+                } else {
+                    mesh = new THREE.Mesh(new THREE.TetrahedronGeometry(0.7), MAT_T3_PAPER.clone()); val=2; axis='acad'; tier='t3';
+                }
+                mesh.position.set((Math.random()-0.5)*30, 2, zPos); mesh.rotation.set(Math.random(),Math.random(),Math.random());
+                mesh.userData = { type: 'art', val: val, axis: axis, tier: tier }; scene.add(mesh); objects.push(mesh);
+            }
+        }
+        function getWaveHeight(x, z, time) { return Math.sin(x*0.1 + time)*0.6 + Math.sin(z*0.05 + time*0.8)*0.4; }
+        function triggerGateSequence(gateData) {
+            STATE.paused=true; document.getElementById('gate-name').innerText=gateData.label; document.getElementById('gate-quote').innerText=gateData.quote;
+            const ctxEl=document.getElementById('gate-context');
+            ctxEl.innerText = gateData.type==='Pos'?'OPPORTUNITY SEIZED':(gateData.type==='Neg'?'CRISIS ENCOUNTERED':'INTROSPECTION');
+            ctxEl.style.color = gateData.type==='Pos'?'#FFD700':(gateData.type==='Neg'?'#FF003C':'#88A');
+            document.getElementById('gate-modal').style.display='flex';
+            STATE.timeline.push({ age: 20+(STATE.era*20), event: gateData.label });
+            if(gateData.w) Object.keys(gateData.w).forEach(k => STATE.metrics[k] += gateData.w[k]);
+            setTimeout(() => {
+                document.getElementById('gate-modal').style.display='none'; STATE.paused=false; STATE.timeScale=1.0; STATE.aberration=0.05;
+                objects.filter(o=>o.userData.type==='gate').forEach(g=>scene.remove(g));
+                const remaining=objects.filter(o=>o.userData.type!=='gate'); objects.length=0; objects.push(...remaining);
+                STATE.era++; if(STATE.era>=3) endGame();
+                else { document.getElementById('era-val').innerText=ERAS[STATE.era]; document.getElementById('sub-era').innerText=SUB_ERAS[STATE.era]; }
+            }, 3000);
+        }
+        function endGame() {
+            STATE.running=false; const m=STATE.metrics;
+            let archetype = m.inst>Math.max(m.net,m.disc)?"INSTITUTIONAL GIANT":(m.net>Math.max(m.inst,m.acad)?"MARKET DARLING":(m.hist>20?"THE HERMIT":"BALANCED MODERNIST"));
+            document.getElementById('rep-artist').innerText = `User_${Math.floor(Math.random()*9000)+1000}`; document.getElementById('rep-arch').innerText=archetype;
+            document.getElementById('val-inst').innerText=m.inst; document.getElementById('val-net').innerText=m.net; document.getElementById('val-acad').innerText=m.acad; document.getElementById('val-hist').innerText=m.hist;
+            document.getElementById('rep-log').innerHTML = STATE.timeline.map(t=>`<div class="log-entry"><strong>Age ${t.age}:</strong> ${t.event}</div>`).join('');
+            document.getElementById('ui').style.pointerEvents='auto'; document.getElementById('report-screen').style.display='block';
+        }
+
+        const clock = new THREE.Clock();
+        const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+        composer.addPass(new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85));
+        const cinematicPass = new ShaderPass(CinematicShader); composer.addPass(cinematicPass);
+
+        function animate() {
+            requestAnimationFrame(animate); 
+            // Safety check for objects
+            if (!starField || !water) return; 
+            if (STATE.paused || !STATE.running) return;
+            
+            const dtRaw = Math.min(clock.getDelta(), 0.1);
+            let targetTimeScale=1.0;
+            const nearestGate = objects.find(o=>o.userData.type==='gate' && o.position.z>player.position.z && o.position.z<player.position.z+50);
+            if(nearestGate) { const dist=nearestGate.position.z-player.position.z; if(dist<30){ targetTimeScale=0.1; STATE.aberration=Math.max(STATE.aberration, (1.0-(Math.max(0,dist)/30.0))*0.03); } }
+            STATE.timeScale += (targetTimeScale-STATE.timeScale)*0.1;
+            const dt=dtRaw*STATE.timeScale; const now=clock.getElapsedTime();
+            
+            cinematicPass.uniforms.uTime.value=now; cinematicPass.uniforms.uAberration.value=STATE.aberration;
+            wakeMesh.material.uniforms.uTime.value=now; godRays.children.forEach(r=>r.material.uniforms.uTime.value=now); 
+            starField.material.uniforms.uTime.value=now;
+            
+            STATE.aberration*=0.9; STATE.shake*=0.9; STATE.flash*=0.9; STATE.shipVibration*=0.9; STATE.dragFactor*=0.95;
+            camera.position.x=player.position.x*0.1+(Math.random()-0.5)*STATE.shake; camera.position.y=8+(Math.random()-0.5)*STATE.shake;
+            ambient.intensity=1.0+STATE.flash*2.0;
+
+            // --- Physics Update (Grounded & Heavy) ---
+            const SHIP_MASS = 2.0;
+            const WATER_DRAG = 2.5; // Viscous water
+            const INPUT_FORCE = 80.0;
+            const HAND_SENSITIVITY = 6.0;
+
+            let force = 0;
+            
+            // 1. Input Force
+            if (STATE.handActive) {
+                // Hand input targets a velocity, use P-controller to apply force
+                const targetVel = STATE.input * 25.0;
+                force = (targetVel - STATE.vel.x) * HAND_SENSITIVITY;
+            } else {
+                // Keyboard applies direct force
+                force = STATE.input * INPUT_FORCE;
+            }
+
+            // 2. Drag Force (Opposes velocity)
+            // Increases when hitting Tier 1 (dragFactor)
+            const dragCoeff = WATER_DRAG * (STATE.dragFactor ? (1.0 + STATE.dragFactor) : 1.0);
+            force -= STATE.vel.x * dragCoeff;
+
+            // 3. Integration (F = ma)
+            const acceleration = force / SHIP_MASS;
+            STATE.vel.x += acceleration * dt; // Use scaled dt for time dilation support
+
+            // 4. Position Update
+            player.position.x += STATE.vel.x * dt;
+            player.position.x = Math.max(-25, Math.min(25, player.position.x));
+
+            // 5. Banking (Roll) - Weighted Lag
+            // Calculate ideal bank angle based on centripetal force approx (velocity)
+            const targetBank = -STATE.vel.x * 0.03; 
+            // Lerp towards target with "heavy" feel (slow response)
+            const bankSpeed = 3.0;
+            player.rotation.z += (targetBank - player.rotation.z) * bankSpeed * dt;
+
+            // 6. Pitch & Heave (Water Interaction)
+            // Bow rises with speed (planing) + wave interaction
+            const waveH = getWaveHeight(player.position.x, player.position.z + STATE.dist, now);
+            const targetHeight = waveH + 0.6;
+            // Damped vertical spring
+            player.position.y += (targetHeight - player.position.y) * 5.0 * dt;
+            // Add vibration from impact
+            player.position.y += (Math.random()-0.5) * STATE.shipVibration * 0.2;
+
+            // Pitch based on vertical velocity approx + speed
+            const pitchSpeed = Math.abs(STATE.vel.x) * 0.002;
+            const wavePitch = Math.cos(now * 1.0) * 0.02; // Gentle idle rock
+            const targetPitch = pitchSpeed + wavePitch;
+            player.rotation.x += (targetPitch - player.rotation.x) * 2.0 * dt;
+
+            wakeNodes.unshift({x:player.position.x, y:player.position.y, z:player.position.z+3.0, era:STATE.era});
+            const flowSpeed = STATE.speed * dt;
+            for(let i=0;i<wakeNodes.length;i++){ wakeNodes[i].z+=flowSpeed; wakeNodes[i].y=getWaveHeight(wakeNodes[i].x, wakeNodes[i].z+STATE.dist, now); }
+            if(wakeNodes.length>WAKE_SEGMENTS) wakeNodes.pop();
+            const posAttr=wakeGeo.attributes.position; const alphaAttr=wakeGeo.attributes.aAlpha; const eraAttr=wakeGeo.attributes.aEra;
+            for(let i=0;i<WAKE_SEGMENTS-1;i++){
+                if(i<wakeNodes.length){
+                    const p=wakeNodes[i]; const width=0.5+(i/WAKE_SEGMENTS)*1.5;
+                    posAttr.setXYZ(i*2, p.x-width, p.y+0.05, p.z); posAttr.setXYZ(i*2+1, p.x+width, p.y+0.05, p.z);
+                    const a=1.0-(i/WAKE_SEGMENTS); alphaAttr.setX(i*2, a); alphaAttr.setX(i*2+1, a);
+                    const nodeEra = p.era!==undefined ? p.era : STATE.era; eraAttr.setX(i*2, nodeEra); eraAttr.setX(i*2+1, nodeEra);
+                } else { posAttr.setXYZ(i*2,0,-100,0); posAttr.setXYZ(i*2+1,0,-100,0); }
+            }
+            posAttr.needsUpdate=true; alphaAttr.needsUpdate=true; eraAttr.needsUpdate=true;
+            if(Math.abs(STATE.vel.x)>1.0) spawnParticles(player.position, 'wake');
+
+            dirLight.position.x = player.position.x + 10; dirLight.target.position.x = player.position.x; dirLight.target.updateMatrixWorld();
+            STATE.dist += STATE.speed * dt; mapPlane.material.map.offset.y=(STATE.dist*0.002)%1;
+            for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.position.addScaledVector(p.userData.vel, STATE.timeScale); p.userData.life-=p.userData.decay*STATE.timeScale; p.scale.setScalar(p.userData.life); if(p.userData.life<=0){ scene.remove(p); particles.splice(i,1); } }
+            if(Math.random()<0.06*STATE.timeScale) spawnObject('art', -100);
+            if(STATE.dist%300>290 && objects.filter(o=>o.userData.type=='gate').length===0 && STATE.era<3) spawnObject('gate', -120);
+
+            for(let i=objects.length-1;i>=0;i--){
+                const o=objects[i]; o.position.z += STATE.speed * dt;
+                
+                o.traverse((child) => {
+                    if (child.isMesh && child.material && child.material.uniforms && child.material.uniforms.uTime) {
+                        child.material.uniforms.uTime.value = now;
+                        if (child.material.uniforms.uPulse) {
+                            child.material.uniforms.uPulse.value = STATE.flash;
+                        }
+                    }
+                });
+
+                if(o.userData.type==='gate') {
+                   if(Math.abs(o.position.z-player.position.z)<2 && Math.abs(o.position.x-player.position.x)<6.0){ triggerGateSequence(o.userData.data); return; }
+                } else if(o.userData.type==='art') {
+                    if(o.userData.tier==='t1'){ o.children[0].material.emissiveIntensity=0.5+Math.sin(now*5)*0.5; o.rotation.x+=dt; o.rotation.y+=dt; }
+                    else if(o.userData.tier==='t2'){ o.children[0].material.uniforms.uTime.value=now; o.rotation.x+=dt*3; o.rotation.z+=dt*3; }
+                    else { o.rotation.x=Math.sin(now)*0.2; o.rotation.y+=dt; }
+                    if(Math.abs(o.position.z-player.position.z)<2 && Math.abs(o.position.x-player.position.x)<2.5){
+                        STATE.score+=o.userData.val; STATE.metrics[o.userData.axis]+=o.userData.val; document.getElementById('score-val').innerText=STATE.score; spawnParticles(o.position, o.userData.tier);
+                        if(o.userData.tier==='t1'){ STATE.shake=1.5; STATE.flash=1.0; STATE.shipVibration=1.0; STATE.dragFactor=1.0; }
+                        if(o.userData.tier==='t2') STATE.aberration=0.02;
+                        scene.remove(o); objects.splice(i,1);
+                    }
+                }
+                if(o.position.z>10){ scene.remove(o); objects.splice(i,1); }
+            }
+            water.rotation.x=-Math.PI/2+Math.sin(now)*0.02; composer.render();
+        }
+        animate();
+
+        window.addEventListener('keydown', e => { if(e.key==='ArrowLeft'||e.key==='a') STATE.input=-1; if(e.key==='ArrowRight'||e.key==='d') STATE.input=1; });
+        window.addEventListener('keyup', () => STATE.input=0);
+        window.addEventListener('resize', () => { camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); });
+        if('ontouchstart' in window) { document.getElementById('touch-controls').style.display='block'; document.addEventListener('touchmove', e => { STATE.input=(e.touches[0].clientX-window.innerWidth/2)/(window.innerWidth/4); }); document.addEventListener('touchend', () => STATE.input=0); }
+        window.addEventListener('message', e => { 
+            if(e.data.type==='PAUSE_GAME') STATE.paused=e.data.payload; 
+            if(e.data.type==='INPUT_UPDATE') { STATE.handActive=e.data.payload.isActive; if(e.data.payload.isActive) STATE.input=e.data.payload.x; }
+        });
+    </script>
+</body>
+</html>

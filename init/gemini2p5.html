@@ -1,0 +1,125 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Curator's Run Lite (v4.0)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@700&family=Playfair+Display:ital@1&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; background-color: #050510; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; }
+        #score-board { position: absolute; top: 20px; right: 20px; font-size: 24px; font-family: 'Playfair Display', serif; }
+        #era-board { position: absolute; top: 20px; left: 20px; font-size: 14px; text-transform: uppercase; color: #3B82F6; }
+        #game-over { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(5,5,16,0.9); flex-direction: column; justify-content: center; align-items: center; z-index: 20; }
+        button { background: #28317C; color: white; border: none; padding: 15px 30px; font-weight: 700; margin-top: 20px; }
+    </style>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+</head>
+<body>
+    <div id="score-board">0</div>
+    <div id="era-board">Era: 20s</div>
+    <div id="game-over">
+        <h1>VOYAGE ENDED</h1>
+        <div id="final-stats" style="font-size: 24px; color: #3B82F6;"></div>
+        <button onclick="location.reload()">RESTART</button>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050510); 
+        scene.fog = new THREE.FogExp2(0x050510, 0.02);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 8, 15);
+        camera.lookAt(0,0,0);
+
+        const renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Lights
+        const light = new THREE.DirectionalLight(0xffffff, 1.2);
+        light.position.set(5, 10, 5);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
+
+        // Water
+        const water = new THREE.Mesh(
+            new THREE.PlaneGeometry(100, 100),
+            new THREE.MeshLambertMaterial({ color: 0x0a1a55 })
+        );
+        water.rotation.x = -Math.PI/2;
+        water.position.y = -2;
+        scene.add(water);
+
+        // Player (Simplified Lego Ship)
+        const player = new THREE.Group();
+        const hull = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), new THREE.MeshLambertMaterial({color: 0x1e3a8a}));
+        const sail = new THREE.Mesh(new THREE.PlaneGeometry(2, 3), new THREE.MeshBasicMaterial({color: 0xffffff, side: THREE.DoubleSide}));
+        sail.position.set(0, 3, 0);
+        player.add(hull, sail);
+        scene.add(player);
+
+        // Logic
+        let score = 0, era = 0, speed = 30;
+        let isRunning = true;
+        let inputX = 0, velX = 0;
+        const objects = [];
+        const ERAS = ['20s', '40s', '60s'];
+
+        function animate() {
+            if(!isRunning) return;
+            requestAnimationFrame(animate);
+
+            // Physics (Simplified Inertia)
+            velX += (inputX * 30 - velX) * 0.1;
+            player.position.x += velX * 0.03;
+            player.rotation.z = -velX * 0.002;
+            
+            // Light Tracking
+            light.position.x = player.position.x + 5;
+
+            // Spawn
+            if(Math.random() < 0.05) {
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshLambertMaterial({color: Math.random()>0.5 ? 0x28317C : 0x3B82F6}));
+                mesh.position.set((Math.random()-0.5)*20, 0, -60);
+                mesh.userData = {type:'art'};
+                scene.add(mesh);
+                objects.push(mesh);
+            }
+
+            // Object Loop
+            for(let i=objects.length-1; i>=0; i--) {
+                const o = objects[i];
+                o.position.z += 0.5;
+                if(o.position.z > 5) { scene.remove(o); objects.splice(i,1); }
+                
+                if(o.position.distanceTo(player.position) < 3) {
+                    if(o.userData.type === 'art') {
+                        score += 10;
+                        document.getElementById('score-board').innerText = score;
+                        scene.remove(o); objects.splice(i,1);
+                    }
+                }
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('keydown', e => { if(e.key=='ArrowLeft') inputX=-1; if(e.key=='ArrowRight') inputX=1; });
+        window.addEventListener('keyup', () => inputX=0);
+        
+        if('ontouchstart' in window) {
+            document.addEventListener('touchmove', e => inputX = (e.touches[0].clientX / window.innerWidth - 0.5) * 2);
+            document.addEventListener('touchend', () => inputX=0);
+        }
+        
+        window.addEventListener('message', e => { if(e.data.type === 'PAUSE_GAME') isRunning = !e.data.payload; if(isRunning) animate(); });
+    </script>
+</body>
+</html>
