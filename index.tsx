@@ -211,6 +211,49 @@ const PROMPTS = {
   gemini3: PROMPT_BASE + `\n(High Fidelity: Physical Materials, Bloom, Dynamic Shadows, Film Grain)`
 };
 
+// --- AI REPORT GENERATOR ---
+const generateAnalysisPrompt = (data: any) => `
+**ROLE:** Elite Art Historian & Chief Curator.
+**TASK:** Generate a definitive "Curatorial Record" for a virtual artist based on their career data.
+
+**INPUT DATA (The Artist's Journey):**
+1. **The Metrics (0-100):**
+   - Institutional Authority: ${data.metrics.inst} (Did they succeed in the museum world?)
+   - Network Velocity: ${data.metrics.net} (Did they dominate the market?)
+   - Academic Depth: ${data.metrics.acad} (Did they contribute theory?)
+   - Historical Weight: ${data.metrics.hist} (Will they be remembered?)
+   - Discourse/Scandal: ${data.metrics.disc} (Were they controversial?)
+
+2. **The Timeline (Critical Choices):**
+   - Age 20s (Origin): ${data.timeline[0]?.event || 'Unknown'}
+   - Age 40s (Pivot): ${data.timeline[1]?.event || 'Unknown'}
+   - Age 60s (Legacy): ${data.timeline[2]?.event || 'Unknown'}
+
+3. **The Work (Artifacts Collected):**
+   - Masterpieces (Tier 1): ${data.artifacts?.t1 || 0}
+   - Commercial Works (Tier 2): ${data.artifacts?.t2 || 0}
+   - Sketches (Tier 3): ${data.artifacts?.t3 || 0}
+
+**INSTRUCTIONS:**
+1.  **Archetype Match:** Analyze the combination of 'Fate' (Timeline) and 'Effort' (Metrics). Choose ONE specific archetype title.
+    *   *Examples: "The Enigmatic Recluse", "The Market Darling", "The Radical Iconoclast", "The Institutional Pillar", "The Tragic Genius".*
+2.  **Real-World Parallel:** Identify a real artist who had a similar trajectory.
+    *   *Examples: Basquiat (Fast rise, tragic end), Duchamp (Intellectual, institutional critique), Jeff Koons (Market dominance).*
+3.  **Narrative Synthesis:** Write a 3-sentence editorial critique.
+    *   *Sentence 1:* Summarize their origin and early struggles/successes based on the 20s event.
+    *   *Sentence 2:* Analyze their mid-career pivot and production style (heavy on Masterpieces vs. Commercial work).
+    *   *Sentence 3:* Conclude with their final legacy status based on the 60s event and final Historical score.
+
+**TONE:** Cold, sophisticated, academic, and slightly brutal. "Editorial Brutalism".
+
+**OUTPUT FORMAT:** Return ONLY valid JSON.
+{
+  "archetype": "STRING (e.g. THE MARKET DARLING)",
+  "match": "STRING (e.g. Jeff Koons)",
+  "narrative": "STRING (The 3-sentence critique)"
+}
+`;
+
 function App() {
   const [activeModel, setActiveModel] = useState('gemini3'); 
   const [showRemix, setShowRemix] = useState(false);
@@ -239,6 +282,50 @@ function App() {
     const t = setTimeout(syncGameState, 100);
     return () => clearTimeout(t);
   }, [syncGameState]);
+
+  // --- GAME EVENT LISTENER (Report Generation) ---
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data.type === 'GAME_OVER') {
+        const gameData = event.data.payload;
+        // console.log("Generating Report for:", gameData);
+        
+        try {
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const prompt = generateAnalysisPrompt(gameData);
+          
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash', // Use Flash for fast text generation
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: { responseMimeType: 'application/json' }
+          });
+          
+          const report = JSON.parse(response.text);
+          
+          // Send report back to iframe
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage({ type: 'REPORT_GENERATED', payload: report }, '*');
+          }
+        } catch (e) {
+          console.error("Report Generation Failed:", e);
+          // Fallback if AI fails
+          if (iframeRef.current?.contentWindow) {
+            iframeRef.current.contentWindow.postMessage({ 
+              type: 'REPORT_GENERATED', 
+              payload: { 
+                archetype: "DATA FRAGMENTED", 
+                match: "Unknown Entity", 
+                narrative: "The artist's trajectory was too volatile to record. The signal was lost in the void, leaving only scattered metadata." 
+              } 
+            }, '*');
+          }
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   const loadGame = async (model: string) => {
     setIsLoading(true);

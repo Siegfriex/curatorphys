@@ -81,6 +81,9 @@
             transition: background 0.2s;
         }
         .btn:hover { background: #ccc; }
+        
+        .loading-text { color: #3B82F6; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
 
         #touch-controls { display: none; position: absolute; bottom: 0; left: 0; width: 100%; height: 40%; pointer-events: auto; }
     </style>
@@ -120,7 +123,7 @@
                         <div class="report-title">Curatorial Report vFinal</div>
                         <div class="artist-id" id="rep-artist">Artist #UNKNOWN</div>
                     </div>
-                    <div class="archetype-badge" id="rep-arch">UNDEFINED</div>
+                    <div class="archetype-badge" id="rep-arch">ANALYZING...</div>
                 </div>
                 
                 <div class="matrix-grid">
@@ -144,7 +147,9 @@
 
                 <div class="narrative-box">
                     <span class="label">Trajectory Narrative</span>
-                    <p class="narrative-text" id="rep-narrative">Calculating...</p>
+                    <p class="narrative-text" id="rep-narrative">
+                        <span class="loading-text">CONNECTING TO NEURAL ARCHIVE...</span>
+                    </p>
                 </div>
 
                 <div class="timeline-log" id="rep-log"></div>
@@ -192,296 +197,20 @@
         };
 
         // --- 1. SHADERS (VISUAL RITUAL) ---
-        
-        // Cinematic Post-Process
-        const CinematicShader = {
-            uniforms: {
-                "tDiffuse": { value: null },
-                "uTime": { value: 0 },
-                "uAberration": { value: 0 },
-                "uGrain": { value: 0.15 }
-            },
-            vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-            fragmentShader: `
-                uniform sampler2D tDiffuse; uniform float uAberration; uniform float uGrain; uniform float uTime; varying vec2 vUv;
-                float random(vec2 p) { vec2 k1 = vec2(23.14069263277926, 2.665144142690225); return fract(cos(dot(p, k1)) * 12345.6789); }
-                void main() {
-                    vec2 uv = vUv;
-                    vec2 dist = uv - 0.5; vec2 offset = dist * uAberration;
-                    float r = texture2D(tDiffuse, uv + offset).r;
-                    float g = texture2D(tDiffuse, uv).g;
-                    float b = texture2D(tDiffuse, uv - offset).b;
-                    vec3 color = vec3(r, g, b);
-                    color += (random(uv + uTime) - 0.5) * uGrain;
-                    gl_FragColor = vec4(color, 1.0);
-                }
-            `
-        };
-
-        // Volumetric Beam Shader (Soft Lighthouse Effect)
-        const BeamShader = {
-            uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0xFFD700) } },
-            vertexShader: `
-                varying vec2 vUv; varying vec3 vViewPosition; varying vec3 vNormal;
-                void main() { 
-                    vUv = uv; vNormal = normalize(normalMatrix * normal);
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    vViewPosition = -mvPosition.xyz;
-                    gl_Position = projectionMatrix * mvPosition; 
-                }
-            `,
-            fragmentShader: `
-                uniform float uTime; uniform vec3 uColor;
-                varying vec2 vUv; varying vec3 vViewPosition; varying vec3 vNormal;
-                
-                // Simplex Noise Approximation
-                vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
-                float snoise(vec2 v){
-                    const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-                    vec2 i  = floor(v + dot(v, C.yy) );
-                    vec2 x0 = v -   i + dot(i, C.xx);
-                    vec2 i1; i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-                    vec4 x12 = x0.xyxy + C.xxzz; x12.xy -= i1;
-                    i = mod(i, 289.0);
-                    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
-                    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-                    m = m*m ; m = m*m ;
-                    vec3 x = 2.0 * fract(p * C.www) - 1.0; vec3 h = abs(x) - 0.5; vec3 ox = floor(x + 0.5);
-                    vec3 a0 = x - ox;
-                    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-                    vec3 g; g.x  = a0.x  * x0.x  + h.x  * x0.y; g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-                    return 130.0 * dot(m, g);
-                }
-
-                void main() {
-                    // Soft vertical gradient (Bottom to Top)
-                    float verticalFade = smoothstep(0.0, 0.2, vUv.y) * pow(1.0 - vUv.y, 2.0);
-
-                    // Smoky Noise - Slow, vertical drift
-                    float smoke1 = snoise(vec2(vUv.x * 4.0, vUv.y * 1.5 - uTime * 0.15));
-                    float smoke2 = snoise(vec2(vUv.x * 2.0, vUv.y * 0.5 - uTime * 0.1));
-                    float smoke = (smoke1 + smoke2) * 0.5;
-
-                    // Volumetric feel
-                    vec3 viewDir = normalize(vViewPosition);
-                    // Edge glow (Fresnel)
-                    float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), 2.5);
-                    // Core density
-                    float core = max(0.0, dot(viewDir, -vNormal)) * 0.2;
-
-                    // Compose Alpha
-                    float alpha = verticalFade * (0.1 + fresnel * 0.5 + core + smoke * 0.05);
-
-                    // Color boost at edges
-                    vec3 finalColor = uColor * (1.0 + fresnel * 0.8);
-
-                    gl_FragColor = vec4(finalColor, alpha);
-                }
-            `
-        };
-
-        // Gate Frame Shader (Pulsing Rim)
-        const GateFrameShader = {
-            uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0xFFD700) }, uPulse: { value: 0 } },
-            vertexShader: `
-                varying vec2 vUv; varying vec3 vNormal; varying vec3 vViewPosition;
-                void main() { vUv=uv; vNormal=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.0); vViewPosition=-mv.xyz; gl_Position=projectionMatrix*mv; }
-            `,
-            fragmentShader: `
-                uniform float uTime; uniform vec3 uColor; uniform float uPulse;
-                varying vec2 vUv; varying vec3 vNormal; varying vec3 vViewPosition;
-                void main() {
-                    vec3 viewDir = normalize(vViewPosition);
-                    float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), 3.0);
-                    vec3 base = vec3(0.05, 0.05, 0.08); // Dark metal
-                    float pulse = 0.5 + 0.5 * sin(uTime * 3.0);
-                    vec3 rim = uColor * fresnel * (1.5 + uPulse * 2.0) * pulse;
-                    gl_FragColor = vec4(base + rim, 1.0);
-                }
-            `
-        };
-
-        // Portal "Event Horizon" Shader
-        const PortalShader = {
-            uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(COLORS.gold) }, uDistort: { value: 0.5 } },
-            vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-            fragmentShader: `
-                uniform float uTime; uniform vec3 uColor; uniform float uDistort; varying vec2 vUv;
-                float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
-                void main() {
-                    vec2 p = vUv * 2.0 - 1.0; float r = length(p); float a = atan(p.y, p.x);
-                    float suction = uTime * 2.0; float swirl = r - suction;
-                    vec2 uvDis = vec2(cos(a + swirl), sin(a + swirl)) * r;
-                    float noise = rand(uvDis * 10.0 + uTime * 0.5);
-                    float ring = smoothstep(0.6, 0.45, r) - smoothstep(0.4, 0.0, r);
-                    float core = 1.0 - smoothstep(0.0, 0.8, r);
-                    vec3 col = uColor * (ring * 2.0 + core + noise * 0.5);
-                    gl_FragColor = vec4(col, ring + core + noise * 0.2);
-                }
-            `
-        };
-
-        // Glitch & Wake Shaders
-        const GlitchShader = {
-            uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(COLORS.net) } },
-            vertexShader: `varying vec2 vUv; varying vec3 vNormal; varying vec3 vViewPosition; void main() { vUv=uv; vNormal=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.0); vViewPosition=-mv.xyz; gl_Position=projectionMatrix*mv; }`,
-            fragmentShader: `
-                uniform float uTime; uniform vec3 uColor; varying vec2 vUv; varying vec3 vNormal; varying vec3 vViewPosition;
-                float random(vec2 st) { return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123); }
-                void main() {
-                    vec3 viewDir = normalize(vViewPosition); float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), 2.0);
-                    float scanline = sin(vUv.y * 120.0 - uTime * 8.0) * 0.5 + 0.5;
-                    gl_FragColor = vec4(uColor * (scanline * 0.4 + 0.6) + vec3(0.8) * fresnel, 0.5 + fresnel * 0.5);
-                }
-            `
-        };
-
-        const WakeShader = {
-            uniforms: { uTime: { value: 0 } },
-            vertexShader: `
-                attribute float aAlpha; 
-                attribute float aEra; 
-                varying vec2 vUv; 
-                varying float vAlpha; 
-                varying float vEra; 
-                void main() { 
-                    vUv = uv; 
-                    vAlpha = aAlpha; 
-                    vEra = aEra; 
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); 
-                }
-            `,
-            fragmentShader: `
-                uniform float uTime; 
-                varying vec2 vUv; 
-                varying float vAlpha; 
-                varying float vEra;
-                
-                float hash(vec2 p) {
-                    p = fract(p * vec2(123.34, 456.21));
-                    p += dot(p, p + 45.32);
-                    return fract(p.x * p.y);
-                }
-
-                void main() {
-                    float noise = hash(vUv * 20.0 + floor(uTime * 10.0)); 
-                    float edgeNoise = (noise - 0.5) * 0.2;
-                    float distFromCenter = abs(vUv.y - 0.5) * 2.0 + edgeNoise;
-                    
-                    vec3 col0 = vec3(0.6, 0.7, 0.8);
-                    float alpha0 = smoothstep(0.6, 0.4, distFromCenter) * step(0.5, sin(vUv.x * 100.0 + noise * 10.0)) * 0.4;
-                    vec3 col1 = vec3(0.2, 0.4, 0.9);
-                    float alpha1 = smoothstep(0.7, 0.5, distFromCenter) * 0.8;
-                    vec3 col2 = vec3(0.05, 0.05, 0.1);
-                    float alpha2 = smoothstep(0.8, 0.6, distFromCenter);
-
-                    vec3 finalCol = mix(col0, col1, smoothstep(0.0, 1.0, vEra));
-                    finalCol = mix(finalCol, col2, smoothstep(1.0, 2.0, vEra));
-                    float finalAlpha = mix(alpha0, alpha1, smoothstep(0.0, 1.0, vEra));
-                    finalAlpha = mix(finalAlpha, alpha2, smoothstep(1.0, 2.0, vEra));
-                    finalAlpha *= vAlpha;
-
-                    if (finalAlpha < 0.01) discard;
-                    gl_FragColor = vec4(finalCol, finalAlpha);
-                }
-            `
-        };
-
-        const LightShaftShader = {
-            uniforms: { uTime: {value:0}, uColor: {value: new THREE.Color(0x88ccff)} },
-            vertexShader: `varying vec2 vUv; varying vec3 vPos; void main() { vUv=uv; vPos=position; gl_Position=projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-            fragmentShader: `
-                uniform float uTime; uniform vec3 uColor; varying vec2 vUv; varying vec3 vPos;
-                float noise(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-                void main() {
-                    float beam = smoothstep(0.4, 0.6, noise(vec2(vPos.x * 0.1 + uTime*0.05, vPos.z * 0.1)));
-                    gl_FragColor = vec4(uColor, smoothstep(0.0, 1.0, 1.0 - vUv.y) * beam * 0.08);
-                }
-            `
-        }
+        // ... (Same shaders as before: Cinematic, Beam, GateFrame, Portal, Glitch, Wake, LightShaft) ...
+        const CinematicShader={uniforms:{tDiffuse:{value:null},uTime:{value:0},uAberration:{value:0},uGrain:{value:0.15}},vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,fragmentShader:`uniform sampler2D tDiffuse;uniform float uAberration;uniform float uGrain;uniform float uTime;varying vec2 vUv;float random(vec2 p){vec2 k1=vec2(23.14069263277926,2.665144142690225);return fract(cos(dot(p,k1))*12345.6789);}void main(){vec2 uv=vUv;vec2 dist=uv-0.5;vec2 offset=dist*uAberration;float r=texture2D(tDiffuse,uv+offset).r;float g=texture2D(tDiffuse,uv).g;float b=texture2D(tDiffuse,uv-offset).b;vec3 color=vec3(r,g,b);color+=(random(uv+uTime)-0.5)*uGrain;gl_FragColor=vec4(color,1.0);}`};
+        const BeamShader={uniforms:{uTime:{value:0},uColor:{value:new THREE.Color(0xFFD700)}},vertexShader:`varying vec2 vUv;varying vec3 vViewPosition;varying vec3 vNormal;void main(){vUv=uv;vNormal=normalize(normalMatrix*normal);vec4 mvPosition=modelViewMatrix*vec4(position,1.0);vViewPosition=-mvPosition.xyz;gl_Position=projectionMatrix*mvPosition;}`,fragmentShader:`uniform float uTime;uniform vec3 uColor;varying vec2 vUv;varying vec3 vViewPosition;varying vec3 vNormal;vec3 permute(vec3 x){return mod(((x*34.0)+1.0)*x,289.0);}float snoise(vec2 v){const vec4 C=vec4(0.211324865405187,0.366025403784439,-0.577350269189626,0.024390243902439);vec2 i=floor(v+dot(v,C.yy));vec2 x0=v-i+dot(i,C.xx);vec2 i1;i1=(x0.x>x0.y)?vec2(1.0,0.0):vec2(0.0,1.0);vec4 x12=x0.xyxy+C.xxzz;x12.xy-=i1;i=mod(i,289.0);vec3 p=permute(permute(i.y+vec3(0.0,i1.y,1.0))+i.x+vec3(0.0,i1.x,1.0));vec3 m=max(0.5-vec3(dot(x0,x0),dot(x12.xy,x12.xy),dot(x12.zw,x12.zw)),0.0);m=m*m;m=m*m;vec3 x=2.0*fract(p*C.www)-1.0;vec3 h=abs(x)-0.5;vec3 ox=floor(x+0.5);vec3 a0=x-ox;m*=1.79284291400159-0.85373472095314*(a0*a0+h*h);vec3 g;g.x=a0.x*x0.x+h.x*x0.y;g.yz=a0.yz*x12.xz+h.yz*x12.yw;return 130.0*dot(m,g);}void main(){float verticalFade=smoothstep(0.0,0.2,vUv.y)*pow(1.0-vUv.y,2.0);float smoke1=snoise(vec2(vUv.x*4.0,vUv.y*1.5-uTime*0.15));float smoke2=snoise(vec2(vUv.x*2.0,vUv.y*0.5-uTime*0.1));float smoke=(smoke1+smoke2)*0.5;vec3 viewDir=normalize(vViewPosition);float fresnel=pow(1.0-abs(dot(viewDir,vNormal)),2.5);float core=max(0.0,dot(viewDir,-vNormal))*0.2;float alpha=verticalFade*(0.1+fresnel*0.5+core+smoke*0.05);vec3 finalColor=uColor*(1.0+fresnel*0.8);gl_FragColor=vec4(finalColor,alpha);}`};
+        const GateFrameShader={uniforms:{uTime:{value:0},uColor:{value:new THREE.Color(0xFFD700)},uPulse:{value:0}},vertexShader:`varying vec2 vUv;varying vec3 vNormal;varying vec3 vViewPosition;void main(){vUv=uv;vNormal=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position,1.0);vViewPosition=-mv.xyz;gl_Position=projectionMatrix*mv;}`,fragmentShader:`uniform float uTime;uniform vec3 uColor;uniform float uPulse;varying vec2 vUv;varying vec3 vNormal;varying vec3 vViewPosition;void main(){vec3 viewDir=normalize(vViewPosition);float fresnel=pow(1.0-abs(dot(viewDir,vNormal)),3.0);vec3 base=vec3(0.05,0.05,0.08);float pulse=0.5+0.5*sin(uTime*3.0);vec3 rim=uColor*fresnel*(1.5+uPulse*2.0)*pulse;gl_FragColor=vec4(base+rim,1.0);}`};
+        const PortalShader={uniforms:{uTime:{value:0},uColor:{value:new THREE.Color(COLORS.gold)},uDistort:{value:0.5}},vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,fragmentShader:`uniform float uTime;uniform vec3 uColor;uniform float uDistort;varying vec2 vUv;float rand(vec2 co){return fract(sin(dot(co.xy,vec2(12.9898,78.233)))*43758.5453);}void main(){vec2 p=vUv*2.0-1.0;float r=length(p);float a=atan(p.y,p.x);float suction=uTime*2.0;float swirl=r-suction;vec2 uvDis=vec2(cos(a+swirl),sin(a+swirl))*r;float noise=rand(uvDis*10.0+uTime*0.5);float ring=smoothstep(0.6,0.45,r)-smoothstep(0.4,0.0,r);float core=1.0-smoothstep(0.0,0.8,r);vec3 col=uColor*(ring*2.0+core+noise*0.5);gl_FragColor=vec4(col,ring+core+noise*0.2);}`};
+        const GlitchShader={uniforms:{uTime:{value:0},uColor:{value:new THREE.Color(COLORS.net)}},vertexShader:`varying vec2 vUv;varying vec3 vNormal;varying vec3 vViewPosition;void main(){vUv=uv;vNormal=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position,1.0);vViewPosition=-mv.xyz;gl_Position=projectionMatrix*mv;}`,fragmentShader:`uniform float uTime;uniform vec3 uColor;varying vec2 vUv;varying vec3 vNormal;varying vec3 vViewPosition;float random(vec2 st){return fract(sin(dot(st.xy,vec2(12.9898,78.233)))*43758.5453123);}void main(){vec3 viewDir=normalize(vViewPosition);float fresnel=pow(1.0-abs(dot(viewDir,vNormal)),2.0);float scanline=sin(vUv.y*120.0-uTime*8.0)*0.5+0.5;gl_FragColor=vec4(uColor*(scanline*0.4+0.6)+vec3(0.8)*fresnel,0.5+fresnel*0.5);}`};
+        const WakeShader={uniforms:{uTime:{value:0}},vertexShader:`attribute float aAlpha;attribute float aEra;varying vec2 vUv;varying float vAlpha;varying float vEra;void main(){vUv=uv;vAlpha=aAlpha;vEra=aEra;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,fragmentShader:`uniform float uTime;varying vec2 vUv;varying float vAlpha;varying float vEra;float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}void main(){float noise=hash(vUv*20.0+floor(uTime*10.0));float edgeNoise=(noise-0.5)*0.2;float distFromCenter=abs(vUv.y-0.5)*2.0+edgeNoise;vec3 col0=vec3(0.6,0.7,0.8);float alpha0=smoothstep(0.6,0.4,distFromCenter)*step(0.5,sin(vUv.x*100.0+noise*10.0))*0.4;vec3 col1=vec3(0.2,0.4,0.9);float alpha1=smoothstep(0.7,0.5,distFromCenter)*0.8;vec3 col2=vec3(0.05,0.05,0.1);float alpha2=smoothstep(0.8,0.6,distFromCenter);vec3 finalCol=mix(col0,col1,smoothstep(0.0,1.0,vEra));finalCol=mix(finalCol,col2,smoothstep(1.0,2.0,vEra));float finalAlpha=mix(alpha0,alpha1,smoothstep(0.0,1.0,vEra));finalAlpha=mix(finalAlpha,alpha2,smoothstep(1.0,2.0,vEra));finalAlpha*=vAlpha;if(finalAlpha<0.01)discard;gl_FragColor=vec4(finalCol,finalAlpha);}`};
+        const LightShaftShader={uniforms:{uTime:{value:0},uColor:{value:new THREE.Color(0x88ccff)}},vertexShader:`varying vec2 vUv;varying vec3 vPos;void main(){vUv=uv;vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,fragmentShader:`uniform float uTime;uniform vec3 uColor;varying vec2 vUv;varying vec3 vPos;float noise(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}void main(){float beam=smoothstep(0.4,0.6,noise(vec2(vPos.x*0.1+uTime*0.05,vPos.z*0.1)));gl_FragColor=vec4(uColor,smoothstep(0.0,1.0,1.0-vUv.y)*beam*0.08);}`};
 
         // --- 2. ASSETS ---
-        function createConcreteTexture() {
-            const c=document.createElement('canvas'); c.width=512; c.height=512; const ctx=c.getContext('2d');
-            ctx.fillStyle='#444'; ctx.fillRect(0,0,512,512);
-            for(let i=0;i<50000;i++){ ctx.fillStyle=Math.random()>0.5?'rgba(0,0,0,0.1)':'rgba(255,255,255,0.05)'; ctx.fillRect(Math.random()*512,Math.random()*512,2,2); }
-            return new THREE.CanvasTexture(c);
-        }
-        function createPaperTexture() {
-            const c=document.createElement('canvas'); c.width=256; c.height=256; const ctx=c.getContext('2d');
-            ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,256,256); for(let i=0;i<1000;i++){ ctx.fillStyle='rgba(0,0,0,0.05)'; ctx.fillRect(Math.random()*256,Math.random()*256,1,1); }
-            return new THREE.CanvasTexture(c);
-        }
-        function createLabelTexture(text, color) {
-            const c=document.createElement('canvas'); c.width=512; c.height=128; const ctx=c.getContext('2d');
-            ctx.fillStyle=color||'#fff'; ctx.font='bold 52px "Playfair Display"'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.shadowColor='rgba(255,255,255,0.8)'; ctx.shadowBlur=10; ctx.fillText(text,256,64);
-            return new THREE.CanvasTexture(c);
-        }
-        
-        // --- 2.1 Void Rain Starfield ---
-        function createStarField() {
-            const count = 3000;
-            const geo = new THREE.BufferGeometry();
-            const pos = new Float32Array(count * 3);
-            const colors = new Float32Array(count * 3);
-            const sizes = new Float32Array(count);
-            const speeds = new Float32Array(count);
-            const phases = new Float32Array(count);
-
-            const palette = [new THREE.Color(0xffffff), new THREE.Color(0x3B82F6), new THREE.Color(0x88ccff), new THREE.Color(0xaaccff)];
-
-            for(let i=0; i<count; i++){
-                pos[i*3] = (Math.random()-0.5) * 300; 
-                pos[i*3+1] = Math.random() * 100;
-                pos[i*3+2] = (Math.random()-0.5) * 200 - 50;
-
-                const c = palette[Math.floor(Math.random()*palette.length)];
-                colors[i*3] = c.r; colors[i*3+1] = c.g; colors[i*3+2] = c.b;
-
-                sizes[i] = Math.random() * 2.5 + 0.5;
-                speeds[i] = Math.random() * 2.0 + 1.0; 
-                phases[i] = Math.random() * Math.PI * 2;
-            }
-
-            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-            geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-            geo.setAttribute('speed', new THREE.BufferAttribute(speeds, 1));
-            geo.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
-
-            const mat = new THREE.ShaderMaterial({
-                uniforms: { uTime: { value: 0 }, uHeight: { value: 100.0 } },
-                vertexShader: `
-                    uniform float uTime; uniform float uHeight;
-                    attribute float size; attribute float speed; attribute float phase; attribute vec3 color;
-                    varying vec3 vColor; varying float vAlpha;
-                    void main() {
-                        vColor = color;
-                        vec3 p = position;
-                        p.y = mod(p.y - uTime * speed, uHeight);
-                        p.y -= 20.0;
-                        vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
-                        gl_PointSize = size * (30.0 / -mvPosition.z);
-                        gl_Position = projectionMatrix * mvPosition;
-                        vAlpha = 0.5 + 0.5 * sin(uTime * 2.0 + phase);
-                    }
-                `,
-                fragmentShader: `
-                    varying vec3 vColor; varying float vAlpha;
-                    void main() {
-                        vec2 coord = gl_PointCoord - 0.5;
-                        float dist = length(coord);
-                        if(dist > 0.5) discard;
-                        float glow = 1.0 - (dist * 2.0);
-                        glow = pow(glow, 1.5);
-                        gl_FragColor = vec4(vColor, vAlpha * glow);
-                    }
-                `,
-                transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
-            });
-
-            return new THREE.Points(geo, mat);
-        }
+        function createConcreteTexture(){const c=document.createElement('canvas');c.width=512;c.height=512;const ctx=c.getContext('2d');ctx.fillStyle='#444';ctx.fillRect(0,0,512,512);for(let i=0;i<50000;i++){ctx.fillStyle=Math.random()>0.5?'rgba(0,0,0,0.1)':'rgba(255,255,255,0.05)';ctx.fillRect(Math.random()*512,Math.random()*512,2,2);}return new THREE.CanvasTexture(c);}
+        function createPaperTexture(){const c=document.createElement('canvas');c.width=256;c.height=256;const ctx=c.getContext('2d');ctx.fillStyle='#f5f5f5';ctx.fillRect(0,0,256,256);for(let i=0;i<1000;i++){ctx.fillStyle='rgba(0,0,0,0.05)';ctx.fillRect(Math.random()*256,Math.random()*256,1,1);}return new THREE.CanvasTexture(c);}
+        function createLabelTexture(text,color){const c=document.createElement('canvas');c.width=512;c.height=128;const ctx=c.getContext('2d');ctx.fillStyle=color||'#fff';ctx.font='bold 52px "Playfair Display"';ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(255,255,255,0.8)';ctx.shadowBlur=10;ctx.fillText(text,256,64);return new THREE.CanvasTexture(c);}
+        function createStarField(){const count=3000;const geo=new THREE.BufferGeometry();const pos=new Float32Array(count*3);const colors=new Float32Array(count*3);const sizes=new Float32Array(count);const speeds=new Float32Array(count);const phases=new Float32Array(count);const palette=[new THREE.Color(0xffffff),new THREE.Color(0x3B82F6),new THREE.Color(0x88ccff),new THREE.Color(0xaaccff)];for(let i=0;i<count;i++){pos[i*3]=(Math.random()-0.5)*300;pos[i*3+1]=Math.random()*100;pos[i*3+2]=(Math.random()-0.5)*200-50;const c=palette[Math.floor(Math.random()*palette.length)];colors[i*3]=c.r;colors[i*3+1]=c.g;colors[i*3+2]=c.b;sizes[i]=Math.random()*2.5+0.5;speeds[i]=Math.random()*2.0+1.0;phases[i]=Math.random()*Math.PI*2;}geo.setAttribute('position',new THREE.BufferAttribute(pos,3));geo.setAttribute('color',new THREE.BufferAttribute(colors,3));geo.setAttribute('size',new THREE.BufferAttribute(sizes,1));geo.setAttribute('speed',new THREE.BufferAttribute(speeds,1));geo.setAttribute('phase',new THREE.BufferAttribute(phases,1));const mat=new THREE.ShaderMaterial({uniforms:{uTime:{value:0},uHeight:{value:100.0}},vertexShader:`uniform float uTime;uniform float uHeight;attribute float size;attribute float speed;attribute float phase;attribute vec3 color;varying vec3 vColor;varying float vAlpha;void main(){vColor=color;vec3 p=position;p.y=mod(p.y-uTime*speed,uHeight);p.y-=20.0;vec4 mvPosition=modelViewMatrix*vec4(p,1.0);gl_PointSize=size*(30.0/-mvPosition.z);gl_Position=projectionMatrix*mvPosition;vAlpha=0.5+0.5*sin(uTime*2.0+phase);}`,fragmentShader:`varying vec3 vColor;varying float vAlpha;void main(){vec2 coord=gl_PointCoord-0.5;float dist=length(coord);if(dist>0.5)discard;float glow=1.0-(dist*2.0);glow=pow(glow,1.5);gl_FragColor=vec4(vColor,vAlpha*glow);}`,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false});return new THREE.Points(geo,mat);}
 
         // --- 3. SCENE ---
         const scene = new THREE.Scene(); scene.background = new THREE.Color(COLORS.void); scene.fog = new THREE.FogExp2(COLORS.void, 0.01);
@@ -495,12 +224,10 @@
         dirLight.shadow.mapSize.set(4096, 4096); 
         dirLight.shadow.camera.left = -150; dirLight.shadow.camera.right = 150; dirLight.shadow.camera.top = 150; dirLight.shadow.camera.bottom = -150;
         dirLight.shadow.camera.near = 0.5; dirLight.shadow.camera.far = 500;
-        dirLight.shadow.bias = -0.0001; // Fix square artifact / shadow acne
+        dirLight.shadow.bias = -0.0001;
         scene.add(dirLight); scene.add(dirLight.target);
         
-        // Define StarField BEFORE usage
-        const starField = createStarField();
-        scene.add(starField);
+        const starField = createStarField(); scene.add(starField);
 
         const water = new THREE.Mesh(new THREE.PlaneGeometry(500,500,128,128), new THREE.MeshPhysicalMaterial({color:0x020409, transmission:0.9, opacity:1.0, metalness:0.8, roughness:0.1, thickness:5.0, attenuationColor:new THREE.Color(0x050a1a), attenuationDistance:5.0, transparent:true}));
         water.rotation.x=-Math.PI/2; water.position.y=-1.5; water.receiveShadow=true; scene.add(water);
@@ -533,8 +260,12 @@
         const wakeNodes = [];
 
         // --- 4. LOGIC ---
-        // STATE.paused DEFAULT TRUE to wait for React signal
-        const STATE = { running: true, paused: true, score: 0, era: 0, speed: 30, dist: 0, vel: new THREE.Vector2(0,0), input: 0, metrics: {inst:0, net:0, acad:0, disc:0, hist:0}, timeline: [], shake: 0, flash: 0, aberration: 0, timeScale: 1.0, shipVibration: 0, dragFactor: 0, handActive: false };
+        const STATE = { 
+            running: true, paused: true, score: 0, era: 0, speed: 30, dist: 0, vel: new THREE.Vector2(0,0), input: 0, 
+            metrics: {inst:0, net:0, acad:0, disc:0, hist:0}, 
+            artifacts: {t1:0, t2:0, t3:0},
+            timeline: [], shake: 0, flash: 0, aberration: 0, timeScale: 1.0, shipVibration: 0, dragFactor: 0, handActive: false 
+        };
         const ERAS = ['20s', '40s', '60s']; const SUB_ERAS = ['The Order', 'The Inquiry', 'The Ripple'];
 
         const MAT_T1_CORE = new THREE.MeshPhysicalMaterial({color: 0x000000, metalness: 0.2, roughness: 0.05, transmission: 0.95, thickness: 3.0, emissive: 0x28317C, emissiveIntensity: 0.8});
@@ -566,9 +297,7 @@
                     const data = choices[i]; const config = GATE_CONFIG[data.type]; const color = new THREE.Color(config.color);
                     const group = new THREE.Group();
                     
-                    const frameMat = new THREE.ShaderMaterial({ ...GateFrameShader });
-                    frameMat.uniforms.uColor.value = color;
-                    
+                    const frameMat = new THREE.ShaderMaterial({ ...GateFrameShader }); frameMat.uniforms.uColor.value = color;
                     const frameL = new THREE.Mesh(new THREE.BoxGeometry(1, 12, 1), frameMat); frameL.position.set(-3, 6, 0);
                     const frameR = new THREE.Mesh(new THREE.BoxGeometry(1, 12, 1), frameMat); frameR.position.set(3, 6, 0);
                     const frameT = new THREE.Mesh(new THREE.BoxGeometry(7, 1, 1), frameMat); frameT.position.set(0, 12, 0);
@@ -580,8 +309,7 @@
                     frameL.add(new THREE.Mesh(beamGeo, beamMatL).translateX(0).translateY(50));
                     frameR.add(new THREE.Mesh(beamGeo, beamMatR).translateX(0).translateY(50));
                     
-                    const portalMat = new THREE.ShaderMaterial({ ...PortalShader, transparent: true, side: THREE.DoubleSide });
-                    portalMat.uniforms.uColor.value = color;
+                    const portalMat = new THREE.ShaderMaterial({ ...PortalShader, transparent: true, side: THREE.DoubleSide }); portalMat.uniforms.uColor.value = color;
                     const portal = new THREE.Mesh(new THREE.PlaneGeometry(5, 11), portalMat); portal.position.set(0, 6, 0);
                     
                     const labelColorStr = data.type === 'Neg' ? '#FF003C' : (data.type === 'Pos' ? '#FFD700' : '#AAA');
@@ -623,14 +351,36 @@
                 else { document.getElementById('era-val').innerText=ERAS[STATE.era]; document.getElementById('sub-era').innerText=SUB_ERAS[STATE.era]; }
             }, 3000);
         }
+
         function endGame() {
-            STATE.running=false; const m=STATE.metrics;
-            let archetype = m.inst>Math.max(m.net,m.disc)?"INSTITUTIONAL GIANT":(m.net>Math.max(m.inst,m.acad)?"MARKET DARLING":(m.hist>20?"THE HERMIT":"BALANCED MODERNIST"));
-            document.getElementById('rep-artist').innerText = `User_${Math.floor(Math.random()*9000)+1000}`; document.getElementById('rep-arch').innerText=archetype;
-            document.getElementById('val-inst').innerText=m.inst; document.getElementById('val-net').innerText=m.net; document.getElementById('val-acad').innerText=m.acad; document.getElementById('val-hist').innerText=m.hist;
-            document.getElementById('rep-log').innerHTML = STATE.timeline.map(t=>`<div class="log-entry"><strong>Age ${t.age}:</strong> ${t.event}</div>`).join('');
-            document.getElementById('ui').style.pointerEvents='auto'; document.getElementById('report-screen').style.display='block';
+            STATE.running=false;
+            document.getElementById('ui').style.pointerEvents='auto'; 
+            document.getElementById('report-screen').style.display='block';
+
+            // Send Data to Parent for AI Generation
+            window.parent.postMessage({ type: 'GAME_OVER', payload: STATE }, '*');
         }
+
+        // Listen for AI Report
+        window.addEventListener('message', (e) => {
+            if (e.data.type === 'REPORT_GENERATED') {
+                const report = e.data.payload;
+                document.getElementById('rep-artist').innerText = `User_${Math.floor(Math.random()*9000)+1000}`;
+                document.getElementById('rep-arch').innerText = report.archetype || "ANALYSIS FAILED";
+                document.getElementById('rep-narrative').innerText = report.narrative || "Data integrity compromised.";
+                if(report.match) {
+                     document.getElementById('rep-narrative').innerHTML += `<br/><br/><strong style="color:#3B82F6">ARCHETYPE MATCH: ${report.match}</strong>`;
+                }
+
+                // Update metrics visualization
+                const m = STATE.metrics;
+                document.getElementById('val-inst').innerText=m.inst; 
+                document.getElementById('val-net').innerText=m.net; 
+                document.getElementById('val-acad').innerText=m.acad; 
+                document.getElementById('val-hist').innerText=m.hist;
+                document.getElementById('rep-log').innerHTML = STATE.timeline.map(t=>`<div class="log-entry"><strong>Age ${t.age}:</strong> ${t.event}</div>`).join('');
+            }
+        });
 
         const clock = new THREE.Clock();
         const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
@@ -639,7 +389,6 @@
 
         function animate() {
             requestAnimationFrame(animate); 
-            // Safety check for objects
             if (!starField || !water) return; 
             if (STATE.paused || !STATE.running) return;
             
@@ -658,58 +407,21 @@
             camera.position.x=player.position.x*0.1+(Math.random()-0.5)*STATE.shake; camera.position.y=8+(Math.random()-0.5)*STATE.shake;
             ambient.intensity=1.0+STATE.flash*2.0;
 
-            // --- Physics Update (Grounded & Heavy) ---
-            const SHIP_MASS = 2.0;
-            const WATER_DRAG = 2.5; // Viscous water
-            const INPUT_FORCE = 80.0;
-            const HAND_SENSITIVITY = 6.0;
-
+            const SHIP_MASS = 2.0; const WATER_DRAG = 2.5; const INPUT_FORCE = 80.0; const HAND_SENSITIVITY = 6.0;
             let force = 0;
-            
-            // 1. Input Force
-            if (STATE.handActive) {
-                // Hand input targets a velocity, use P-controller to apply force
-                const targetVel = STATE.input * 25.0;
-                force = (targetVel - STATE.vel.x) * HAND_SENSITIVITY;
-            } else {
-                // Keyboard applies direct force
-                force = STATE.input * INPUT_FORCE;
-            }
-
-            // 2. Drag Force (Opposes velocity)
-            // Increases when hitting Tier 1 (dragFactor)
+            if (STATE.handActive) { const targetVel = STATE.input * 25.0; force = (targetVel - STATE.vel.x) * HAND_SENSITIVITY; } 
+            else { force = STATE.input * INPUT_FORCE; }
             const dragCoeff = WATER_DRAG * (STATE.dragFactor ? (1.0 + STATE.dragFactor) : 1.0);
             force -= STATE.vel.x * dragCoeff;
-
-            // 3. Integration (F = ma)
             const acceleration = force / SHIP_MASS;
-            STATE.vel.x += acceleration * dt; // Use scaled dt for time dilation support
-
-            // 4. Position Update
+            STATE.vel.x += acceleration * dt;
             player.position.x += STATE.vel.x * dt;
             player.position.x = Math.max(-25, Math.min(25, player.position.x));
-
-            // 5. Banking (Roll) - Weighted Lag
-            // Calculate ideal bank angle based on centripetal force approx (velocity)
-            const targetBank = -STATE.vel.x * 0.03; 
-            // Lerp towards target with "heavy" feel (slow response)
-            const bankSpeed = 3.0;
-            player.rotation.z += (targetBank - player.rotation.z) * bankSpeed * dt;
-
-            // 6. Pitch & Heave (Water Interaction)
-            // Bow rises with speed (planing) + wave interaction
+            const targetBank = -STATE.vel.x * 0.03; player.rotation.z += (targetBank - player.rotation.z) * 3.0 * dt;
             const waveH = getWaveHeight(player.position.x, player.position.z + STATE.dist, now);
-            const targetHeight = waveH + 0.6;
-            // Damped vertical spring
-            player.position.y += (targetHeight - player.position.y) * 5.0 * dt;
-            // Add vibration from impact
-            player.position.y += (Math.random()-0.5) * STATE.shipVibration * 0.2;
-
-            // Pitch based on vertical velocity approx + speed
-            const pitchSpeed = Math.abs(STATE.vel.x) * 0.002;
-            const wavePitch = Math.cos(now * 1.0) * 0.02; // Gentle idle rock
-            const targetPitch = pitchSpeed + wavePitch;
-            player.rotation.x += (targetPitch - player.rotation.x) * 2.0 * dt;
+            player.position.y += (waveH + 0.6 - player.position.y) * 5.0 * dt + (Math.random()-0.5) * STATE.shipVibration * 0.2;
+            const pitchSpeed = Math.abs(STATE.vel.x) * 0.002; const wavePitch = Math.cos(now * 1.0) * 0.02;
+            player.rotation.x += (pitchSpeed + wavePitch - player.rotation.x) * 2.0 * dt;
 
             wakeNodes.unshift({x:player.position.x, y:player.position.y, z:player.position.z+3.0, era:STATE.era});
             const flowSpeed = STATE.speed * dt;
@@ -735,24 +447,16 @@
 
             for(let i=objects.length-1;i>=0;i--){
                 const o=objects[i]; o.position.z += STATE.speed * dt;
-                
-                o.traverse((child) => {
-                    if (child.isMesh && child.material && child.material.uniforms && child.material.uniforms.uTime) {
-                        child.material.uniforms.uTime.value = now;
-                        if (child.material.uniforms.uPulse) {
-                            child.material.uniforms.uPulse.value = STATE.flash;
-                        }
-                    }
-                });
-
-                if(o.userData.type==='gate') {
-                   if(Math.abs(o.position.z-player.position.z)<2 && Math.abs(o.position.x-player.position.x)<6.0){ triggerGateSequence(o.userData.data); return; }
-                } else if(o.userData.type==='art') {
+                o.traverse((child) => { if (child.isMesh && child.material && child.material.uniforms && child.material.uniforms.uTime) { child.material.uniforms.uTime.value = now; if (child.material.uniforms.uPulse) child.material.uniforms.uPulse.value = STATE.flash; } });
+                if(o.userData.type==='gate') { if(Math.abs(o.position.z-player.position.z)<2 && Math.abs(o.position.x-player.position.x)<6.0){ triggerGateSequence(o.userData.data); return; } } 
+                else if(o.userData.type==='art') {
                     if(o.userData.tier==='t1'){ o.children[0].material.emissiveIntensity=0.5+Math.sin(now*5)*0.5; o.rotation.x+=dt; o.rotation.y+=dt; }
                     else if(o.userData.tier==='t2'){ o.children[0].material.uniforms.uTime.value=now; o.rotation.x+=dt*3; o.rotation.z+=dt*3; }
                     else { o.rotation.x=Math.sin(now)*0.2; o.rotation.y+=dt; }
                     if(Math.abs(o.position.z-player.position.z)<2 && Math.abs(o.position.x-player.position.x)<2.5){
-                        STATE.score+=o.userData.val; STATE.metrics[o.userData.axis]+=o.userData.val; document.getElementById('score-val').innerText=STATE.score; spawnParticles(o.position, o.userData.tier);
+                        STATE.score+=o.userData.val; STATE.metrics[o.userData.axis]+=o.userData.val; 
+                        STATE.artifacts[o.userData.tier]++; // Track artifacts
+                        document.getElementById('score-val').innerText=STATE.score; spawnParticles(o.position, o.userData.tier);
                         if(o.userData.tier==='t1'){ STATE.shake=1.5; STATE.flash=1.0; STATE.shipVibration=1.0; STATE.dragFactor=1.0; }
                         if(o.userData.tier==='t2') STATE.aberration=0.02;
                         scene.remove(o); objects.splice(i,1);
@@ -771,6 +475,7 @@
         window.addEventListener('message', e => { 
             if(e.data.type==='PAUSE_GAME') STATE.paused=e.data.payload; 
             if(e.data.type==='INPUT_UPDATE') { STATE.handActive=e.data.payload.isActive; if(e.data.payload.isActive) STATE.input=e.data.payload.x; }
+            if(e.data.type==='REPORT_GENERATED') { /* Handled in dedicated listener above */ }
         });
     </script>
 </body>
